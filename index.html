@@ -104,26 +104,71 @@
     margin-bottom:10px;
   }
 
-  select{
+  .combo{ position:relative; }
+
+  .combo-trigger{
     width:100%;
+    display:flex;
+    align-items:center;
+    gap:12px;
     appearance:none;
     -webkit-appearance:none;
     background: rgba(0,0,0,0.35);
     color: var(--sand);
     border: 2px solid rgba(255,46,166,0.4);
     border-radius: 14px;
-    padding: 16px 44px 16px 18px;
+    padding: 10px 44px 10px 12px;
     font-size: 17px;
     font-weight:600;
+    font-family:inherit;
     cursor:pointer;
+    text-align:left;
     background-image: linear-gradient(45deg, transparent 50%, var(--lime) 50%), linear-gradient(135deg, var(--lime) 50%, transparent 50%);
-    background-position: calc(100% - 22px) calc(1.15em), calc(100% - 16px) calc(1.15em);
+    background-position: calc(100% - 22px) calc(1.4em), calc(100% - 16px) calc(1.4em);
     background-size: 7px 7px, 7px 7px;
     background-repeat: no-repeat;
     transition: border-color .2s ease, transform .15s ease;
   }
-  select:hover{ border-color: var(--lime); }
-  select:focus{ outline:none; border-color: var(--lime); box-shadow: 0 0 0 4px rgba(198,255,61,0.15); }
+  .combo-trigger:hover{ border-color: var(--lime); }
+  .combo-trigger:focus{ outline:none; border-color: var(--lime); box-shadow: 0 0 0 4px rgba(198,255,61,0.15); }
+
+  .combo-avatar{
+    width:34px; height:34px;
+    border-radius:50%;
+    object-fit:cover;
+    flex:none;
+    background:rgba(255,255,255,0.1);
+    border:1px solid rgba(255,255,255,0.2);
+  }
+
+  .combo-list{
+    list-style:none;
+    margin:8px 0 0;
+    padding:6px;
+    position:absolute;
+    top:100%; left:0; right:0;
+    background: #1a0b2e;
+    border: 2px solid rgba(255,46,166,0.4);
+    border-radius: 14px;
+    max-height: 320px;
+    overflow-y:auto;
+    z-index: 10;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    display:none;
+  }
+  .combo-list.open{ display:block; }
+
+  .combo-item{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:10px 12px;
+    border-radius:10px;
+    cursor:pointer;
+    font-size:15px;
+    font-weight:600;
+  }
+  .combo-item:hover, .combo-item.active{ background: rgba(255,46,166,0.18); }
 
   .card{
     margin-top: 26px;
@@ -140,6 +185,50 @@
     from{ opacity:0; transform: translateY(10px) scale(.96); }
     to{ opacity:1; transform: translateY(0) scale(1); }
   }
+
+  .card-photo{
+    display:block;
+    width:96px;
+    height:96px;
+    border-radius:50%;
+    object-fit:cover;
+    margin:0 auto 16px;
+    border:2px solid rgba(255,255,255,0.25);
+    cursor:zoom-in;
+    transition: transform .15s ease, border-color .15s ease;
+  }
+  .card-photo:hover{ transform: scale(1.05); border-color: var(--lime); }
+
+  .lightbox{
+    position:fixed; inset:0; z-index:100;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    background: rgba(10,4,20,0.9);
+    backdrop-filter: blur(6px);
+    padding: 32px;
+    cursor:zoom-out;
+  }
+  .lightbox.open{ display:flex; }
+  .lightbox img{
+    max-width: min(90vw, 480px);
+    max-height: 80vh;
+    border-radius: 20px;
+    box-shadow: 0 20px 80px rgba(0,0,0,0.6);
+    border: 2px solid rgba(255,255,255,0.15);
+  }
+  .lightbox-close{
+    position:absolute;
+    top:20px; right:24px;
+    width:40px; height:40px;
+    border-radius:50%;
+    border:1px solid rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.08);
+    color: var(--sand);
+    font-size:18px;
+    cursor:pointer;
+  }
+  .lightbox-close:hover{ background: rgba(255,46,166,0.3); }
 
   .card .tag{
     font-size:11px;
@@ -217,12 +306,17 @@
   </header>
 
   <div class="panel">
-    <label for="contactSelect">Elige a tu amiga de Villa</label>
-    <select id="contactSelect">
-      <option value="">— selecciona un nombre —</option>
-    </select>
+    <label id="comboLabelFor">Elige a tu amiga de Villa</label>
+    <div class="combo" id="combo">
+      <button type="button" class="combo-trigger" id="comboTrigger" aria-haspopup="listbox" aria-expanded="false">
+        <img class="combo-avatar" id="comboAvatar" src="" alt="" hidden>
+        <span id="comboLabel">— selecciona un nombre —</span>
+      </button>
+      <ul class="combo-list" id="comboList" role="listbox" tabindex="-1"></ul>
+    </div>
 
     <div class="card" id="card">
+      <img class="card-photo" id="cardPhoto" src="" alt="" hidden>
       <div class="tag">Contacto</div>
       <h2 id="cardName"></h2>
       <div class="num" id="cardNumber"></div>
@@ -237,37 +331,76 @@
   <footer>Hecho con cariño para la villa 🌺</footer>
 </div>
 
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lightboxClose" aria-label="Cerrar">✕</button>
+  <img id="lightboxImg" src="" alt="">
+</div>
+
 <script>
+  // Mensaje que se manda por defecto al abrir el chat de WhatsApp
+  const DEFAULT_MESSAGE = "Hola, me gustas";
+
+  // Avatar de respaldo (SVG en línea) por si falta la foto de un contacto
+  const FALLBACK_AVATAR = "data:image/svg+xml;utf8," + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="32" fill="#3a1a5c"/><text x="32" y="40" font-size="26" text-anchor="middle" fill="#ffe9c7" font-family="Arial">?</text></svg>`
+  );
+
   // Lista de contactos: nombre real cuando se conoce, si no, Linda N
+  // "photo" apunta a la carpeta img/ — coloca ahí la foto de cada quien con ese mismo nombre de archivo
   const contacts = [
-    { name: "Renata",  number: "0983483843" },
-    { name: "Linda 1", number: "0987900940" },
-    { name: "Linda 2", number: "0990967085" },
-    { name: "Linda 3", number: "0998145933" },
-    { name: "Linda 4", number: "0991286960" },
-    { name: "Linda 5", number: "0989457428" },
-    { name: "Linda 6", number: "0998256570" },
-    { name: "Linda 7", number: "0990483921" },
-    { name: "Linda 8", number: "0969088925" },
-    { name: "Linda 9", number: "0988557100" },
-    { name: "Linda 10", number: "0960543407" },
-    { name: "Linda 11", number: "0979390941" },
-    { name: "Linda 12", number: "0984783729" },
-    { name: "Linda 13", number: "0998620580" }
+    { name: "Renata",   number: "0983483843", photo: "img/renata.png" },
+    { name: "Linda 1",  number: "0987900940", photo: "img/linda-1.jpg" },
+    { name: "Linda 2",  number: "0990967085", photo: "img/linda-2.jpg" },
+    { name: "Linda 3",  number: "0998145933", photo: "img/linda-3.jpg" },
+    { name: "Linda 4",  number: "0991286960", photo: "img/linda-4.jpg" },
+    { name: "Linda 5",  number: "0989457428", photo: "img/linda-5.jpg" },
+    { name: "Linda 6",  number: "0998256570", photo: "img/linda-6.jpg" },
+    { name: "Linda 7",  number: "0990483921", photo: "img/linda-7.jpg" },
+    { name: "Linda 8",  number: "0969088925", photo: "img/linda-8.jpg" },
+    { name: "Linda 9",  number: "0988557100", photo: "img/linda-9.jpg" },
+    { name: "Linda 10", number: "0960543407", photo: "img/linda10.png" },
+    { name: "Linda 11", number: "0979390941", photo: "img/linda-11.jpg" },
+    { name: "Linda 12", number: "0984783729", photo: "img/linda-12.jpg" },
+    { name: "Linda 13", number: "0998620580", photo: "img/linda-13.jpg" },
+    { name: "Danini Pasquel",       number: "0997017861", photo: "img/daninipasquel.png" },
+    { name: "La de Villa y Carlos", number: "0962625411", photo: "img/la-de-villa-y-carlos.png" },
+    { name: "Sheylee",              number: "0983359936", photo: "img/sheylee.png" },
+    { name: "Milena",               number: "0994270958", photo: "img/milena.png" }
   ];
 
-  const select = document.getElementById('contactSelect');
+  const comboTrigger = document.getElementById('comboTrigger');
+  const comboList = document.getElementById('comboList');
+  const comboAvatar = document.getElementById('comboAvatar');
+  const comboLabel = document.getElementById('comboLabel');
   const card = document.getElementById('card');
+  const cardPhoto = document.getElementById('cardPhoto');
   const cardName = document.getElementById('cardName');
   const cardNumber = document.getElementById('cardNumber');
   const waLink = document.getElementById('waLink');
   const hint = document.getElementById('hint');
+  const lightbox = document.getElementById('lightbox');
+  const lightboxImg = document.getElementById('lightboxImg');
+  const lightboxClose = document.getElementById('lightboxClose');
 
   contacts.forEach((c, i) => {
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = c.name;
-    select.appendChild(opt);
+    const li = document.createElement('li');
+    li.className = 'combo-item';
+    li.setAttribute('role', 'option');
+    li.dataset.index = i;
+
+    const img = document.createElement('img');
+    img.className = 'combo-avatar';
+    img.src = c.photo;
+    img.alt = c.name;
+    img.onerror = () => { img.onerror = null; img.src = FALLBACK_AVATAR; };
+
+    const span = document.createElement('span');
+    span.textContent = c.name;
+
+    li.appendChild(img);
+    li.appendChild(span);
+    li.addEventListener('click', () => selectContact(i));
+    comboList.appendChild(li);
   });
 
   function formatNumber(n){
@@ -280,23 +413,66 @@
   function toWhatsapp(n){
     const digits = n.replace(/\D/g, '');
     const local = digits.startsWith('0') ? digits.slice(1) : digits;
-    return `https://wa.me/593${local}`;
+    return `https://wa.me/593${local}?text=${encodeURIComponent(DEFAULT_MESSAGE)}`;
   }
 
-  select.addEventListener('change', () => {
-    const val = select.value;
-    if(val === ""){
-      card.classList.remove('show');
-      hint.style.display = 'block';
-      return;
-    }
-    const c = contacts[val];
+  function selectContact(i){
+    const c = contacts[i];
+
+    comboAvatar.src = c.photo;
+    comboAvatar.alt = c.name;
+    comboAvatar.hidden = false;
+    comboAvatar.onerror = () => { comboAvatar.onerror = null; comboAvatar.src = FALLBACK_AVATAR; };
+    comboLabel.textContent = c.name;
+
+    cardPhoto.src = c.photo;
+    cardPhoto.alt = c.name;
+    cardPhoto.hidden = false;
+    cardPhoto.onerror = () => { cardPhoto.onerror = null; cardPhoto.src = FALLBACK_AVATAR; };
+
     cardName.textContent = c.name;
     cardNumber.textContent = formatNumber(c.number);
     waLink.href = toWhatsapp(c.number);
     card.classList.add('show');
     hint.style.display = 'none';
+
+    closeCombo();
+  }
+
+  function openCombo(){
+    comboList.classList.add('open');
+    comboTrigger.setAttribute('aria-expanded', 'true');
+  }
+  function closeCombo(){
+    comboList.classList.remove('open');
+    comboTrigger.setAttribute('aria-expanded', 'false');
+  }
+  function toggleCombo(){
+    comboList.classList.contains('open') ? closeCombo() : openCombo();
+  }
+
+  comboTrigger.addEventListener('click', toggleCombo);
+
+  document.addEventListener('click', (e) => {
+    if(!document.getElementById('combo').contains(e.target)) closeCombo();
   });
+
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape'){ closeCombo(); closeLightbox(); }
+  });
+
+  function openLightbox(src, alt){
+    lightboxImg.src = src;
+    lightboxImg.alt = alt;
+    lightbox.classList.add('open');
+  }
+  function closeLightbox(){
+    lightbox.classList.remove('open');
+  }
+
+  cardPhoto.addEventListener('click', () => openLightbox(cardPhoto.src, cardPhoto.alt));
+  lightbox.addEventListener('click', closeLightbox);
+  lightboxClose.addEventListener('click', closeLightbox);
 </script>
 
 </body>
